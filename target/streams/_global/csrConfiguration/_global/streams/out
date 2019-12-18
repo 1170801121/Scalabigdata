@@ -1,0 +1,4 @@
+[0m[[0m[33mwarn[0m] [0m[0minsecure HTTP request is deprecated 'http://maven.aliyun.com/nexus/content/groups/public/'; switch to HTTPS or opt-in as ("aliyun-nexus" at "http://maven.aliyun.com/nexus/content/groups/public/").withAllowInsecureProtocol(true)[0m
+[0m[[0m[33mwarn[0m] [0m[0minsecure HTTP request is deprecated 'http://maven.ibiblio.org/maven2/'; switch to HTTPS or opt-in as ("ibiblio-maven" at "http://maven.ibiblio.org/maven2/").withAllowInsecureProtocol(true)[0m
+[0m[[0m[33mwarn[0m] [0m[0minsecure HTTP request is deprecated 'http://uk.maven.org/maven2/'; switch to HTTPS or opt-in as ("uk-repository" at "http://uk.maven.org/maven2/").withAllowInsecureProtocol(true)[0m
+[0m[[0m[33mwarn[0m] [0m[0minsecure HTTP request is deprecated 'http://repository.jboss.org/nexus/content/groups/public/'; switch to HTTPS or opt-in as ("jboss-repository" at "http://repository.jboss.org/nexus/content/groups/public/").withAllowInsecureProtocol(true)[0m
