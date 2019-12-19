@@ -21,5 +21,6 @@
         <jarDirectory url="file://E:/spark/jars" recursive="false" type="SOURCES" />
       </library>
     </orderEntry>
+    <orderEntry type="library" name="scala-sdk-2.12.10" level="application" />
   </component>
 </module>

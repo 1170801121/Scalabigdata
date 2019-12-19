@@ -19,16 +19,16 @@ object Compute extends App {
       .join(vunion).map(x => (x._2._1._2, (x._2._2, x._2._1._1)))
       .join(vunion).map(x => new Edge(x._2._1._1, x._2._2, x._2._1._2)))
 
-    val rdd1: RDD[(VertexId, String)] = conf.makeRDD(Seq(
-      (3L, "student"), (7L, "postdoc"),
-      (5L, "prof"), (2L, "prof")
-    ))
-    val rdd2: RDD[Edge[String]] = conf.makeRDD(Seq(
-      Edge(3L, 5L, "0"),
-      Edge(3L, 7L, "0"),
-      Edge(3L, 2L, "0"),
-      Edge(7L, 2L, "0"),
-    ))
+//    val rdd1: RDD[(VertexId, String)] = conf.makeRDD(Seq(
+//      (3L, "student"), (7L, "postdoc"),
+//      (5L, "prof"), (2L, "prof")
+//    ))
+//    val rdd2: RDD[Edge[String]] = conf.makeRDD(Seq(
+//      Edge(3L, 5L, "0"),
+//      Edge(3L, 7L, "0"),
+//      Edge(3L, 2L, "0"),
+//      Edge(7L, 2L, "0"),
+//    ))
 
     val ver: VertexRDD[String] = graph.vertices
 
@@ -74,30 +74,31 @@ object Compute extends App {
 
 
   val bfsVer: RDD[(VertexId, (String, attribute))] = ver.map(x => Tuple2(x._1, Tuple2(x._2, new attribute(x._1))))
-  val newGraph: Graph[(String, attribute), String] = Graph(bfsVer, rdd2)
+  val newGraph: Graph[(String, attribute), String] = Graph(bfsVer, graph.edges)
   bfsVer.foreach(vertexid => {
     val vk = vertexid._1 //遍历到第k个点
     println("遍历到第 " + vk + " 个点")
-    //    val newerGraph: Graph[(VertexId, (String, attribute)), String] = newGraph.mapVertices((vid, v) => {
-    //      println("进入mapvertices")
-    //      if (vid == vk) {
-    //        v._2.que = true
-    //        println("进入mapvertices--入队")
-    //      }
-    //      (vid, v)
-    //    })
-        val newV: RDD[(VertexId, (VertexId, (String, attribute)))] = newGraph.vertices.map(v => {
-          println("进入mapvertices")
-          if (v._1 == vk) {
-            v._2._2.que = true
-            println("进入mapvertices--入队")
-          }
-          (v._1, v)
-        })
-    val newerGraph: Graph[(VertexId, (String, attribute)), String] = Graph(newV, newGraph.edges)
+    val newerGraph: Graph[(VertexId, (String, attribute)), String] = newGraph.mapVertices((vid, v) => {
+      println("进入mapvertices")
+      if (vid == vk) {
+        v._2.que = true
+        println("进入mapvertices--入队")
+      }
+      (vid, v)
+    })
+    newerGraph.vertices.count()//强制map
+//        val newV: RDD[(VertexId, (VertexId, (String, attribute)))] = newGraph.vertices.map(v => {
+//          println("进入mapvertices")
+//          if (v._1 == vk) {
+//            v._2._2.que = true
+//            println("进入mapvertices--入队")
+//          }
+//          (v._1, v)
+//        })
+//    val newerGraph: Graph[(VertexId, (String, attribute)), String] = Graph(newV, newGraph.edges)
 
 //    propagateBFS(newGraph, vk)
-
+    val forGraph : Graph[(VertexId, (String, attribute)), String] = Graph(bfsVer, graph.edges)
     var count = 1 //表示vk是否有其他可拓展点
     while (count != 0) {
       count = 0
@@ -108,13 +109,15 @@ object Compute extends App {
         t.sendToDst(1)
         val min: Long = t.srcAttr._2._2.p + 1
         for (x <- t.dstAttr._2._2.hop) { //比较Qk-1和当前p
-          newGraph.mapVertices((vid,v) => if (vid == vk) {
-            if (v._2.hop.contains(x)) { //找出Qk-1中src和dst距离
-              if (String.valueOf(v._2.index.get(x)) + t.dstAttr._2._2.index.get(x) <= String.valueOf(min)) {
+          newerGraph.mapVertices((vid,v) => if (vid == vk) {
+            if (v._2._2.hop.contains(x)) { //找出Qk-1中src和dst距离
+              if (v._2._2.index.getOrElse[Long](x, 0) + t.dstAttr._2._2.index.getOrElse[Long](x, 0) <= min) {
                 t.dstAttr._2._2.ban = true //切掉
               }
             }
-          })
+          }
+          )
+
         }
 
         //未被切掉则加入索引集中
@@ -129,6 +132,7 @@ object Compute extends App {
         if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
       }
         , _ + _)
+      graph1.count()
     }
 
 
