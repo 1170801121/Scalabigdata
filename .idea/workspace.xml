@@ -2,11 +2,6 @@
 <project version="4">
   <component name="ChangeListManager">
     <list default="true" id="f1a8f554-dc2f-4468-bc4f-cb9248e0951b" name="Default Changelist" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/out/production/scala/main/Compute$.class" beforeDir="false" afterPath="$PROJECT_DIR$/out/production/scala/main/Compute$.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/out/production/scala/main/Compute$delayedInit$body.class" beforeDir="false" afterPath="$PROJECT_DIR$/out/production/scala/main/Compute$delayedInit$body.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/out/production/scala/main/Compute.class" beforeDir="false" afterPath="$PROJECT_DIR$/out/production/scala/main/Compute.class" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/out/production/scala/main/attribute.class" beforeDir="false" afterPath="$PROJECT_DIR$/out/production/scala/main/attribute.class" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/src/main/Compute.scala" beforeDir="false" afterPath="$PROJECT_DIR$/src/main/Compute.scala" afterDir="false" />
     </list>
     <ignored path="$PROJECT_DIR$/out/" />
@@ -24,8 +19,8 @@
       <file pinned="false" current-in-tab="true">
         <entry file="file://$PROJECT_DIR$/src/main/Compute.scala">
           <provider selected="true" editor-type-id="text-editor">
-            <state relative-caret-position="190">
-              <caret line="74" lean-forward="true" selection-start-line="74" selection-end-line="74" />
+            <state relative-caret-position="531">
+              <caret line="123" lean-forward="true" selection-start-line="123" selection-end-line="123" />
               <folding>
                 <element signature="e#13#73#0" expanded="true" />
               </folding>
@@ -66,11 +61,10 @@
       </list>
     </option>
   </component>
-  <component name="ProjectFrameBounds" extendedState="6">
-    <option name="x" value="637" />
-    <option name="y" value="337" />
-    <option name="width" value="1014" />
-    <option name="height" value="1040" />
+  <component name="ProjectFrameBounds">
+    <option name="x" value="-8" />
+    <option name="width" value="977" />
+    <option name="height" value="1038" />
   </component>
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectView">
@@ -141,12 +135,12 @@
       <workItem from="1576501132498" duration="34683000" />
       <workItem from="1576604542366" duration="434000" />
       <workItem from="1576631149192" duration="993000" />
-      <workItem from="1576637233343" duration="30055000" />
+      <workItem from="1576637233343" duration="35125000" />
     </task>
     <servers />
   </component>
   <component name="TimeTrackingManager">
-    <option name="totallyTimeSpent" value="66165000" />
+    <option name="totallyTimeSpent" value="71235000" />
   </component>
   <component name="TodoView">
     <todo-panel id="selected-file">
@@ -158,10 +152,10 @@
     </todo-panel>
   </component>
   <component name="ToolWindowManager">
-    <frame x="-7" y="-7" width="1550" height="838" extended-state="6" />
+    <frame x="-6" y="0" width="781" height="830" extended-state="0" />
     <editor active="true" />
     <layout>
-      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.09651475" />
+      <window_info content_ui="combo" id="Project" order="0" visible="true" weight="0.041493777" />
       <window_info id="Structure" order="1" side_tool="true" weight="0.25" />
       <window_info id="Designer" order="2" />
       <window_info id="Image Layers" order="3" />
@@ -170,7 +164,7 @@
       <window_info id="Favorites" order="6" side_tool="true" />
       <window_info anchor="bottom" id="Message" order="0" />
       <window_info anchor="bottom" id="Find" order="1" />
-      <window_info active="true" anchor="bottom" id="Run" order="2" visible="true" weight="0.26203966" />
+      <window_info active="true" anchor="bottom" id="Run" order="2" visible="true" weight="0.042979944" />
       <window_info anchor="bottom" id="Debug" order="3" weight="0.4" />
       <window_info anchor="bottom" id="Cvs" order="4" weight="0.25" />
       <window_info anchor="bottom" id="Inspection" order="5" weight="0.4" />
@@ -272,8 +266,8 @@
     </entry>
     <entry file="file://$PROJECT_DIR$/src/main/Compute.scala">
       <provider selected="true" editor-type-id="text-editor">
-        <state relative-caret-position="190">
-          <caret line="74" lean-forward="true" selection-start-line="74" selection-end-line="74" />
+        <state relative-caret-position="531">
+          <caret line="123" lean-forward="true" selection-start-line="123" selection-end-line="123" />
           <folding>
             <element signature="e#13#73#0" expanded="true" />
           </folding>

@@ -1,8 +1,9 @@
 package main
 import org.apache.spark.{SparkConf, SparkContext, graphx, _}
 import org.apache.spark.rdd.RDD
-import org.apache.spark.graphx._
+import org.apache.spark.graphx.{VertexId, _}
 import org.apache.spark.graphx.impl.GraphImpl
+
 import scala.io.StdIn
 import scala.collection.mutable
 //import scala.collection.mutable.Set
@@ -19,16 +20,16 @@ object Compute extends App {
       .join(vunion).map(x => (x._2._1._2, (x._2._2, x._2._1._1)))
       .join(vunion).map(x => new Edge(x._2._1._1, x._2._2, x._2._1._2)))
 
-    val rdd1: RDD[(VertexId, String)] = conf.makeRDD(Seq(
-      (3L, "student"), (7L, "postdoc"),
-      (5L, "prof"), (2L, "prof")
-    ))
-    val rdd2: RDD[Edge[String]] = conf.makeRDD(Seq(
-      Edge(3L, 5L, "0"),
-      Edge(3L, 7L, "0"),
-      Edge(3L, 2L, "0"),
-      Edge(7L, 2L, "0"),
-    ))
+//    val rdd1: RDD[(VertexId, String)] = conf.makeRDD(Seq(
+//      (3L, "student"), (7L, "postdoc"),
+//      (5L, "prof"), (2L, "prof")
+//    ))
+//    val rdd2: RDD[Edge[String]] = conf.makeRDD(Seq(
+//      Edge(3L, 5L, "0"),
+//      Edge(3L, 7L, "0"),
+//      Edge(3L, 2L, "0"),
+//      Edge(7L, 2L, "0"),
+//    ))
 
     val ver: VertexRDD[String] = graph.vertices
 
@@ -74,27 +75,20 @@ object Compute extends App {
 
 
   val bfsVer: RDD[(VertexId, (String, attribute))] = ver.map(x => Tuple2(x._1, Tuple2(x._2, new attribute(x._1))))
-  val newGraph: Graph[(String, attribute), String] = Graph(bfsVer, rdd2)
-  bfsVer.foreach(vertexid => {
-    val vk = vertexid._1 //遍历到第k个点
-    println("遍历到第 " + vk + " 个点")
-    //    val newerGraph: Graph[(VertexId, (String, attribute)), String] = newGraph.mapVertices((vid, v) => {
-    //      println("进入mapvertices")
-    //      if (vid == vk) {
-    //        v._2.que = true
-    //        println("进入mapvertices--入队")
-    //      }
-    //      (vid, v)
-    //    })
-        val newV: RDD[(VertexId, (VertexId, (String, attribute)))] = newGraph.vertices.map(v => {
-          println("进入mapvertices")
-          if (v._1 == vk) {
-            v._2._2.que = true
-            println("进入mapvertices--入队")
-          }
-          (v._1, v)
-        })
-    val newerGraph: Graph[(VertexId, (String, attribute)), String] = Graph(newV, newGraph.edges)
+  val newGraph: Graph[(String, attribute), String] = Graph(bfsVer, graph.edges)
+//  bfsVer.foreach(vertexid => {
+//    val vk = vertexid._1 //遍历到第k个点
+//    println("遍历到第 " + vk + " 个点")
+
+
+  val newerGraph: Graph[(VertexId, (String, attribute)), String] = newGraph.mapVertices((vid, v) => {
+    println("进入mapvertices")
+    if (!v._2.que) {
+      v._2.now = true //该点作为第k个点入队,之后变为false
+      v._2.que = true
+    }
+    (vid, v)
+  })
 
 //    propagateBFS(newGraph, vk)
 
@@ -102,33 +96,38 @@ object Compute extends App {
     while (count != 0) {
       count = 0
       println("进入while")
-      val graph1: VertexRDD[Int] = newerGraph.aggregateMessages[Int](t => if (t.srcAttr._2._2.que  .&& (!t.dstAttr._2._2.que) .&& (!t.dstAttr._2._2.ban)) {
+      val graph1: VertexRDD[Long] = newerGraph.aggregateMessages[Long](t => if (t.srcAttr._2._2.que  .&& (!t.dstAttr._2._2.que) .&& (!t.dstAttr._2._2.ban)) {
         println("进入while-if")
         count = 1
-        t.sendToDst(1)
         val min: Long = t.srcAttr._2._2.p + 1
-        for (x <- t.dstAttr._2._2.hop) { //比较Qk-1和当前p
-          newGraph.mapVertices((vid,v) => if (vid == vk) {
-            if (v._2.hop.contains(x)) { //找出Qk-1中src和dst距离
-              if (String.valueOf(v._2.index.get(x)) + t.dstAttr._2._2.index.get(x) <= String.valueOf(min)) {
-                t.dstAttr._2._2.ban = true //切掉
-              }
-            }
-          })
-        }
+        t.sendToDst(min)
+//        for (x <- t.dstAttr._2._2.hop) { //比较Qk-1和当前p
+//          newGraph.mapVertices((vid,v) => if (vid == vk) {
+//            if (v._2.hop.contains(x)) { //找出Qk-1中src和dst距离
+//              if (String.valueOf(v._2.index.get(x)) + t.dstAttr._2._2.index.get(x) <= String.valueOf(min)) {
+//                t.dstAttr._2._2.ban = true //切掉
+//              }
+//            }
+//          })
+//        }
 
-        //未被切掉则加入索引集中
-        newGraph.mapVertices((vid,v) => if (vid == vk) {
-          if (!v._2.ban){
-            v._2.index += (t.dstAttr._2._2.id -> min)
-            v._2.hop += t.dstAttr._2._2.id
-            t.dstAttr._2._2.isHop = true//将该hop点标记
-          }
-        })
 
-        if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
+
+//        //未被切掉则加入索引集中
+//        newGraph.mapVertices((vid,v) => if (vid == vk) {
+//          if (!v._2.ban){
+//            v._2.index += (t.dstAttr._2._2.id -> min)
+//            v._2.hop += t.dstAttr._2._2.id
+//            t.dstAttr._2._2.isHop = true//将该hop点标记
+//          }
+//        })
+
+//        if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
       }
-        , _ + _)
+        , (a, b) => if (a < b) a else b)
+      //id String attribute long
+      graph1.join(newerGraph.vertices).map(v => (v._1, v._2._2._2._1, v._2._2._2._2, v._2._1))
+      val newGraph: Graph[(VertexId, String, attribute, Long), String] = Graph(bfsVer, rdd2)
     }
 
 
@@ -139,7 +138,49 @@ object Compute extends App {
       v._2.ban = false
       v._2.p = Long.MaxValue
     })
-  })
+//  })
+
+
+  /**
+    * Returns the shortest directed-edge path from src to dst in the graph. If no path exists, returns
+    * the empty list.
+    */
+  def bfs[VD, ED](graph: Graph[VD, ED], src: VertexId, dst: VertexId): Seq[VertexId] = {
+    if (src == dst) return List(src)
+    // The attribute of each vertex is (dist from src, id of vertex with dist-1)
+    var g: Graph[(Int, VertexId), ED] =
+      graph.mapVertices((id, _) => (if (id == src) 0 else Int.MaxValue, 0L))
+
+    // Traverse forward from src
+    var dstAttr = (Int.MaxValue, 0L)
+    while (dstAttr._1 == Int.MaxValue) {
+      val msgs = g.aggregateMessages[(Int, VertexId)](
+        e => if (e.srcAttr._1 != Int.MaxValue && e.srcAttr._1 + 1 < e.dstAttr._1) {
+          e.sendToDst((e.srcAttr._1 + 1, e.srcId))
+        },
+        (a, b) => if (a._1 < b._1) a else b).cache()
+
+      if (msgs.count == 0) return List.empty
+
+      g = g.ops.joinVertices(msgs) {
+        (id, oldAttr, newAttr) =>
+          if (newAttr._1 < oldAttr._1) newAttr else oldAttr
+      }.cache()
+
+      dstAttr = g.vertices.filter(_._1 == dst).first()._2
+    }
+
+    // Traverse backward from dst and collect the path
+    var path: List[VertexId] = dstAttr._2 :: dst :: Nil
+    while (path.head != src) {
+      path = g.vertices.filter(_._1 == path.head).first()._2._2 :: path
+    }
+
+    path
+  }
+
+
+
 
   //对hop点生成索引
   newGraph.mapVertices((vid, v1) => {
@@ -257,4 +298,5 @@ class attribute(vertexId: VertexId){
   //hop点索引结构
   var reachLabel : scala.collection.mutable.Map[String, scala.collection.mutable.Set[VertexId]] = scala.collection.mutable.Map[String, scala.collection.mutable.Set[VertexId]]()
 //  var yLabel : scala.collection.mutable.Set[VertexId] =  scala.collection.mutable.Set()
+  var now : Boolean = false
 }
