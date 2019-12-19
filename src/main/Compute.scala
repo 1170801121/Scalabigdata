@@ -175,7 +175,7 @@ object Compute {
         //          }
         //        })
 
-        if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
+//        if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
       } else {
         t.sendToDst(Long.MaxValue)
         t.sendToSrc(Long.MaxValue)
@@ -184,7 +184,12 @@ object Compute {
       //id String attribute long <- id long id String attribute
       val graph1v: RDD[(VertexId, (String, attribute, Long))] = graph1.join(newerGraph.vertices).map(v => (v._1, (v._2._2._2._1, v._2._2._2._2, v._2._1)))
       graph1v.count()
-      val newGraph1: Graph[(String, attribute, Long), String] = Graph(graph1v, graph.edges)
+//      newerGraph.aggregateMessages[Long](t => if (t.srcAttr._2._2.que.&&(!t.dstAttr._2._2.que).&&(!t.dstAttr._2._2.ban)) {
+//        t.sendToDst(1)
+//        if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
+//      }, (a, b) => if (a < b) a else b)
+
+        val newGraph1: Graph[(String, attribute, Long), String] = Graph(graph1v, graph.edges)
 //      val graph1Vertex: VertexRDD[(String, attribute, VertexId)] = newGraph1.vertices
 //      val setRdd: RDD[(VertexId, Boolean, mutable.Set[VertexId], mutable.Map[VertexId, Long])] = graph1Vertex.map(v => (v._1, v._2._2.now,v._2._2.hop,v._2._2.index))
 //      val nowTuple: (VertexId, Boolean, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = setRdd.reduce((v1, v2) => {
@@ -212,14 +217,16 @@ object Compute {
           }
 
           //未被切掉则更新目标顶点索引集
-            if (!t.dstAttr._2.ban){
-              t.dstAttr._2.index += (nowID -> t.dstAttr._3)
-              t.dstAttr._2.hop += nowID
-              nowisHop = true//将出发点作为hop点标记
-            }
-        }, _ + _)
-        newGraph2Vertex.count()
+          if (!t.dstAttr._2.ban){
+            t.dstAttr._2.index += (nowID -> t.dstAttr._3)
+            t.dstAttr._2.hop += nowID
+            nowisHop = true//将出发点作为hop点标记
+          }
 
+          if (!t.dstAttr._2.ban) t.dstAttr._2.que = true //入队
+        }, _ + _)
+
+        newGraph2Vertex.count()
       }
 
     }
