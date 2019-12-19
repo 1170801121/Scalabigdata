@@ -112,9 +112,6 @@ object Compute {
 
     val ver: VertexRDD[String] = graph.vertices
 
-    //  graphx.EdgeContext[(String, attribute), String, Int]
-
-
     var bfsVer: RDD[(VertexId, (String, attribute))] = ver.map(x => Tuple2(x._1, Tuple2(x._2, new attribute(x._1))))
     var newGraph: Graph[(String, attribute), String] = Graph(bfsVer, graph.edges)
     //  bfsVer.foreach(vertexid => {
@@ -129,20 +126,25 @@ object Compute {
         v._2.now = true //该点作为第k个点入队,之后变为false
         v._2.que = true
       }
-      (vid + 1, v)
+      (vid, v)
     })
     newerGraph.vertices.count()
 
-    newGraph.vertices.map(v => {
-      println("进入mapvertices222")
-      if (!v._2._2.que) {
-        v._2._2.now = true //该点作为第k个点入队,之后变为false
-        v._2._2.que = true
-      }
-      ( v)
-    }).reduce((v1,v2) => v1)
-
-    //    propagateBFS(newGraph, vk)
+    //获得当前出发点的index和hop集合
+    val graph1Vertex: VertexRDD[(VertexId, (String, attribute))] = newerGraph.vertices
+    val setRdd: RDD[(VertexId, Boolean, mutable.Set[VertexId], mutable.Map[VertexId, Long])] = graph1Vertex.map(v => (v._1, v._2._2.now,v._2._2.hop,v._2._2.index))
+    val nowTuple: (VertexId, Boolean, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = setRdd.reduce((v1, v2) => {
+      if (v1._2)
+        v1
+      else if (v2._2)
+        v2
+      else
+        v1
+    })
+    val nowSet: mutable.Set[VertexId] = nowTuple._3
+    val nowIndex: mutable.Map[VertexId, Long] = nowTuple._4
+    val nowID : VertexId = nowTuple._1
+    var nowisHop : Boolean = false
 
     var count = 1 //表示vk是否有其他可拓展点
     while (count != 0) {
@@ -173,16 +175,52 @@ object Compute {
         //          }
         //        })
 
-        //        if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
+        if (!t.dstAttr._2._2.ban) t.dstAttr._2._2.que = true //入队
       } else {
         t.sendToDst(Long.MaxValue)
         t.sendToSrc(Long.MaxValue)
       }
         , (a, b) => if (a < b) a else b)
-      //id String attribute long
+      //id String attribute long <- id long id String attribute
       val graph1v: RDD[(VertexId, (String, attribute, Long))] = graph1.join(newerGraph.vertices).map(v => (v._1, (v._2._2._2._1, v._2._2._2._2, v._2._1)))
+      graph1v.count()
       val newGraph1: Graph[(String, attribute, Long), String] = Graph(graph1v, graph.edges)
+//      val graph1Vertex: VertexRDD[(String, attribute, VertexId)] = newGraph1.vertices
+//      val setRdd: RDD[(VertexId, Boolean, mutable.Set[VertexId], mutable.Map[VertexId, Long])] = graph1Vertex.map(v => (v._1, v._2._2.now,v._2._2.hop,v._2._2.index))
+//      val nowTuple: (VertexId, Boolean, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = setRdd.reduce((v1, v2) => {
+//        if (v1._2)
+//          v1
+//        else if (v2._2)
+//          v2
+//        else
+//          v1
+//      })
+//      val nowSet: mutable.Set[VertexId] = nowTuple._3
+//      val nowIndex: mutable.Map[VertexId, Long] = nowTuple._4
+      var countinner = 1 //表示vk是否有其他可拓展点
+      while (countinner != 0) {
+        countinner = 0
+        val newGraph2Vertex: VertexRDD[Long] = newGraph1.aggregateMessages[Long](t => if (t.srcAttr._2.que.&&(!t.dstAttr._2.que).&&(!t.dstAttr._2.ban)) {
+          countinner = 1
+          t.sendToDst(1)
+          for (x <- t.dstAttr._2.hop) { //比较Qk-1和当前p
+              if (nowSet.contains(x)) { //找出Qk-1中src和dst距离
+                if (nowIndex.getOrElse[Long](x,0) + t.dstAttr._2.index.getOrElse[Long](x, 0) <= t.dstAttr._3) {
+                  t.dstAttr._2.ban = true //切掉
+                }
+              }
+          }
 
+          //未被切掉则更新目标顶点索引集
+            if (!t.dstAttr._2.ban){
+              t.dstAttr._2.index += (nowID -> t.dstAttr._3)
+              t.dstAttr._2.hop += nowID
+              nowisHop = true//将出发点作为hop点标记
+            }
+        }, _ + _)
+        newGraph2Vertex.count()
+
+      }
 
     }
 
