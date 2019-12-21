@@ -11,82 +11,6 @@ import scala.collection.mutable.ListBuffer
 //import scala.collection.mutable.Set
 
 object Compute {
-  def propagateBFS(g: Graph[(String, attribute), String], vk: VertexId): Graph[(String, attribute), String] = {
-    g.aggregateMessages[PartitionID](t => if (t.srcAttr._2.que.&&(!t.dstAttr._2.que).&&(!t.dstAttr._2.ban)) {
-      t.sendToDst(1)
-      val min: VertexId = t.srcAttr._2.p + 1
-      for (x <- t.dstAttr._2.hop) { //比较Qk-1和当前p
-        g.mapVertices((vid, v) => if (vid == vk) {
-          if (v._2.hop.contains(x)) { //找出Qk-1中src和dst距离
-            val lo = v._2.index.getOrElse[Long](x, 0) + t.dstAttr._2.index.getOrElse[Long](x, 0)
-            if (lo <= min) {
-              t.dstAttr._2.ban = true //切掉
-            }
-          }
-        })
-      }
-
-      //未被切掉则加入索引集中
-      g.mapVertices((vid, v) => if (vid == vk) {
-        if (!v._2.ban) {
-          v._2.index += (t.dstAttr._2.id -> min)
-          v._2.hop += t.dstAttr._2.id
-          t.dstAttr._2.isHop = true //将该hop点标记
-          v._2.change = true //加入索引才修改change，否则表示BFS后一圈都不更新，则无需再BFS搜更外面的圈
-        }
-      })
-
-      if (!t.dstAttr._2.ban) t.dstAttr._2.que = true //入队
-    }
-      , _ + _)
-
-    val check: Boolean = g.vertices.map(v => v._2._2.change).reduce((v1, v2) => v1 || v2)
-    if (check) {
-      g.mapVertices((vid, v) => v._2.change = false)
-      propagateBFS(g, vk)
-    } else {
-      g
-    }
-  }
-
-  /**
-    * Returns the shortest directed-edge path from src to dst in the graph. If no path exists, returns
-    * the empty list.
-    */
-  def bfs[VD, ED](graph: Graph[VD, ED], src: VertexId, dst: VertexId): Seq[VertexId] = {
-    if (src == dst) return List(src)
-    // The attribute of each vertex is (dist from src, id of vertex with dist-1)
-    var g: Graph[(Int, VertexId), ED] =
-      graph.mapVertices((id, _) => (if (id == src) 0 else Int.MaxValue, 0L))
-
-    // Traverse forward from src
-    var dstAttr = (Int.MaxValue, 0L)
-    while (dstAttr._1 == Int.MaxValue) {
-      val msgs = g.aggregateMessages[(Int, VertexId)](
-        e => if (e.srcAttr._1 != Int.MaxValue && e.srcAttr._1 + 1 < e.dstAttr._1) {
-          e.sendToDst((e.srcAttr._1 + 1, e.srcId))
-        },
-        (a, b) => if (a._1 < b._1) a else b).cache()
-
-      if (msgs.count == 0) return List.empty
-
-      g = g.ops.joinVertices(msgs) {
-        (id, oldAttr, newAttr) =>
-          if (newAttr._1 < oldAttr._1) newAttr else oldAttr
-      }.cache()
-
-      dstAttr = g.vertices.filter(_._1 == dst).first()._2
-    }
-
-    // Traverse backward from dst and collect the path
-    var path: List[VertexId] = dstAttr._2 :: dst :: Nil
-    while (path.head != src) {
-      path = g.vertices.filter(_._1 == path.head).first()._2._2 :: path
-    }
-
-    path
-  }
-
   def main(args: Array[String]): Unit = {
     val filename = "src/University0_0.nt"
     val sc = new SparkConf().setAppName("compute").setMaster("local").set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
@@ -103,8 +27,8 @@ object Compute {
 //      println(v)
 //    })
         val rdd1: RDD[(VertexId, String)] = conf.makeRDD(Seq(
-          (3L, "student"), (7L, "postdoc"),
-          (5L, "prof"), (2L, "profed")
+          (3L, "<http://www.Department0.University0.edu/ResearchGroup0>"), (7L, "<http://www.Department0.University0.edu/AssociateProfessor0>"),
+          (5L, "<http://www.Department0.University0.edu/FullProfessor7>"), (2L, "<http://www.Department0.University0.edu/AssociateProfessor2")
         ))
         val rdd2: RDD[Edge[String]] = conf.makeRDD(Seq(
           Edge(3L, 5L, "0"),
@@ -195,7 +119,7 @@ object Compute {
       })
       var regre = 0
       //表示vk是否有其他可拓展点
-      //这里不可用 var count = 0, 进入if count = 1 判断，因为count在一个rdd操作修改后回到本地的值
+      //这里不可用 var count = 0, 进入if count = 1 判断，因为count在一个rdd操作修改后回到本地的值, count != Long.Max 表示确实进行了BFS
       while (count != Long.MaxValue) {
         regre =  regre + 1
         println("进入while")
@@ -293,10 +217,10 @@ object Compute {
 
           val graph2JoinVertex: RDD[(VertexId, (Boolean, (String, attribute, Long)))] = newGraph2Vertex.join(newGraph1.vertices)
           val graph2JoinUpdate: RDD[(VertexId, (Boolean, (String, attribute, Long)))] = graph2JoinVertex.map(v => {
-            if (!v._2._1) {
+            if (!v._2._1) {//如果未被ban掉
               v._2._2._2.index += (nowID -> v._2._2._3)
               v._2._2._2.hop += nowID
-              nowisHop = true //将出发点作为hop点标记
+//              nowisHop = true //将出发点作为hop点标记, ！！后来发现无效，map中不修改本地的值
               v._2._2._2.que = true //入队
               v._2._2._2.p = v._2._2._3 //入队
               //显示未被切掉点的修改情况
@@ -321,6 +245,28 @@ object Compute {
               (v._1, (tupleBan._2._1, tupleBan._2._2))
             }
           })
+          formatGraph2Vertex.count()
+
+          //由是否有未被ban掉的修改点，从而得到出发点的isHop
+          val getIsHopGraph2Vertex: RDD[Boolean] = newGraph2JoinBan.map(v => {
+            val tupleBan: (Boolean, (String, attribute, VertexId)) = v._2._2.getOrElse(null)
+            if (tupleBan == null) {//表示不可能被修改的点，返回true
+              true
+            } else {
+              tupleBan._1//修改了的点会返回false，ban掉的点会返回true
+            }
+          })
+          val getIsHop: Boolean = getIsHopGraph2Vertex.reduce((b1, b2) => {
+            if (!b1) {
+              b1
+            } else {
+              b2
+            }
+          })
+          if(!getIsHop){
+            nowisHop = !getIsHop
+          }
+
           formatGraph2Vertex.count()
 
           //显示newGraph1中点的修改情况
@@ -348,8 +294,7 @@ object Compute {
         println("进入mapvertices")
         if (v._2.now) {
           v._2.now = false //该点作为第k个点BFS完成后标记
-          v._2.hop = nowSet //更新出发点的结构
-          v._2.index = nowIndex
+          // 更新出发点的结构
           v._2.isHop = nowisHop
           v._2.done = true
         }
@@ -370,80 +315,126 @@ object Compute {
       "Lecturer", "UndergraduateStudent", "GraduateStudent", "TeachingAssistant", "ResearchAssistant",
       "Course", "GraduateCourse", "Publication", "ResearchGroup")
     //对hop点生成索引，加上可达到hop点的点到reach中
-    for (i <- 1L to newerGraph.vertices.count()) {
-      var number = 0
-      newerGraph = newerGraph.mapVertices((vid, v) => {
-        println("进入mapvertices")
-        if ((!v._2.doneHop).&&(v._2.isHop) .&&(number == 0)) {
-          v._2.nowHop = true //该点作为当前遍历的Hop点
-          number = 1
-        }
-        v
-      })
-      //蜜汁需要更新一下，否则在mapVertex中edges的src和dst的属性不会与vertex保持同步
-      newerGraph = Graph(newerGraph.vertices, graph.edges)
-      newerGraph.checkpoint()
-      newerGraph.vertices.count()
-
-      //获得当前遍历到的hop点的index和hop集合
-      val graphHopVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-      val setHopRdd: RDD[(VertexId, Boolean, mutable.Set[VertexId], mutable.Map[String, scala.collection.mutable.Set[String]], String)] = graphHopVertex.map(v => (v._1, v._2._2.nowHop, v._2._2.hop, v._2._2.reachLabel, v._2._1))
-      val hopTuple: (VertexId, Boolean, mutable.Set[VertexId], mutable.Map[String, scala.collection.mutable.Set[String]], String) = setHopRdd.reduce((v1, v2) => {
-        if (v1._2)
-          v1
-        else if (v2._2)
-          v2
-        else
-          v1
-      })
-      val hopSet: mutable.Set[VertexId] = hopTuple._3
-      val hopReach: mutable.Map[String, scala.collection.mutable.Set[String]] = hopTuple._4
-//      val hopName: String = hopTuple._5
-//      hopReach += (hopName -> tempSet)
-
-      val hopNewerGraphVertex: RDD[(VertexId, mutable.Set[VertexId], String)] = newerGraph.vertices.map(v2 => Tuple3(v2._1, v2._2._2.hop, v2._2._1))
-      val hopUpdateVertex: RDD[(VertexId, mutable.Set[VertexId], String)] = hopNewerGraphVertex.map(v3 => {
-        val interestSet = v3._2.intersect(hopSet)
-        if (interestSet.nonEmpty) { //表示可达该hop点
-          var nameType: String = new String()
-          if (v3._3.contains("@")) {
-            val array: Array[String] = v3._3.split("@")
-            nameType = array(0)
-          } else {
-            nameType = v3._3
+    // 创建 Breaks 对象
+    val loop = new Breaks
+    // 在 breakable 中循环
+    loop.breakable {
+      var goon: Boolean = true
+      while (goon) {
+        var number = 0
+        newerGraph = newerGraph.mapVertices((vid, v) => {
+          println("进入hop mapvertices")
+          if ((!v._2.doneHop).&&(v._2.isHop).&&(number == 0)) {
+            v._2.nowHop = true //该点作为当前遍历的Hop点
+            number = 1
           }
-          //将该可达点按类型记录到hopReach中
-          for (name <- allName) {
-            if (nameType.contains(name)) {
-              if (hopReach.contains(name)) {
-                hopReach.getOrElse(name, scala.collection.mutable.Set()) += v3._3
-              }
-              else {
-                val tempSet: mutable.Set[String] = scala.collection.mutable.Set()
-                tempSet += v3._3
-                hopReach += (name -> tempSet)
+          v
+        })
+        //蜜汁需要更新一下，否则在mapVertex中edges的src和dst的属性不会与vertex保持同步
+        newerGraph = Graph(newerGraph.vertices, graph.edges)
+        newerGraph.checkpoint()
+        newerGraph.vertices.count()
+        goon = newerGraph.vertices.map(v => v._2._2.nowHop).reduce((b1, b2) => {
+          if (b1) {
+            b1
+          } else {
+            b2
+          }
+        })
+        //如果此时没有新的hop点作为nowhop则直接break
+        if (!goon){
+          loop.break()
+        }
+        newerGraph.vertices.foreach({ v =>
+          println("hop初始v情况 id" + v._1 + " doneHop" + v._2._2.doneHop + " isHop" + v._2._2.isHop + " nowHop" + v._2._2.nowHop)
+        })
+
+        //获得当前遍历到的hop点的index和hop集合
+        val graphHopVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
+        val setHopRdd: RDD[(VertexId, Boolean, mutable.Set[VertexId], mutable.Map[String, scala.collection.mutable.Set[String]], String)] = graphHopVertex.map(v => (v._1, v._2._2.nowHop, v._2._2.hop, v._2._2.reachLabel, v._2._1))
+        val hopTuple: (VertexId, Boolean, mutable.Set[VertexId], mutable.Map[String, scala.collection.mutable.Set[String]], String) = setHopRdd.reduce((v1, v2) => {
+          if (v1._2)
+            v1
+          else if (v2._2)
+            v2
+          else
+            v1
+        })
+        val hopSet: mutable.Set[VertexId] = hopTuple._3
+        var hopReach: mutable.Map[String, scala.collection.mutable.Set[String]] = hopTuple._4
+        //      val hopName: String = hopTuple._5
+        //      hopReach += (hopName -> tempSet)
+
+        val hopNewerGraphVertex: RDD[(VertexId, mutable.Set[VertexId], String, Boolean)] = newerGraph.vertices.map(v2 => Tuple4(v2._1, v2._2._2.hop, v2._2._1, v2._2._2.nowHop))
+        val hopUpdateVertex: RDD[mutable.Map[String, scala.collection.mutable.Set[String]]] = hopNewerGraphVertex.map(v3 => {
+          var oneVertexHopReach: scala.collection.mutable.Map[String, scala.collection.mutable.Set[String]] = scala.collection.mutable.Map[String, scala.collection.mutable.Set[String]]()
+          val interestSet = v3._2.intersect(hopSet)
+          if (interestSet.nonEmpty) { //表示可达该hop点
+            var nameType: String = new String()
+            if (v3._3.contains("@")) {
+              val array: Array[String] = v3._3.split("@")
+              nameType = array(0)
+            } else if (v3._3.contains("/")) {
+              val array: Array[String] = v3._3.split("/")
+              nameType = array(array.length - 1)
+            } else {
+              nameType = v3._3
+            }
+            println("可到hop点的id" + v3._1 + "type类型 " + nameType)
+
+            //将该可达点按类型记录到一个map中
+            for (name <- allName) {
+              if (nameType.contains(name)) {
+                println("将该可达点按类型记录到oneVertexHopReach中 " + name)
+                if (oneVertexHopReach.contains(name)) {
+                  oneVertexHopReach.getOrElse(name, scala.collection.mutable.Set()) += v3._3
+                }
+                else {
+                  val tempSet: mutable.Set[String] = scala.collection.mutable.Set()
+                  tempSet += v3._3
+                  oneVertexHopReach += (name -> tempSet)
+                }
               }
             }
+            println("oneVertexHopReach " + oneVertexHopReach)
           }
-        }
-        v3
-      })
-      hopUpdateVertex.count()
+          oneVertexHopReach
+        })
+        hopUpdateVertex.count()
+        val getHopReachLabel: mutable.Map[String, mutable.Set[String]] = hopUpdateVertex.reduce((map1, map2) => {
+          for (name <- map2.keySet) {
+            if (map1.contains(name)) {
+              map1(name) = map1.getOrElse(name, scala.collection.mutable.Set()) ++ map2.getOrElse(name, scala.collection.mutable.Set())
+            }
+            else {
+              val tempSet: mutable.Set[String] = map2.getOrElse(name, scala.collection.mutable.Set())
+              map1 += (name -> tempSet)
+            }
+          }
+          map1
+        })
+        hopReach = getHopReachLabel
+        println("hopReach " + hopReach)
 
-      //设置完当前hop点后更新功能属性
-      newerGraph = newerGraph.mapVertices((vid, v) => {
-        println("进入mapvertices")
-        if (v._2.nowHop) {
-          v._2.nowHop = false //该点作为nowHop更新后标记
-          v._2.reachLabel = hopReach //更新nowHop点的结构
-          v._2.doneHop = true
-        }
-        v
-      })
-      newerGraph.checkpoint()
-      newerGraph.vertices.count()
-      newerGraph = Graph(newerGraph.vertices, graph.edges)
+        //设置完当前hop点后更新功能属性
+        newerGraph = newerGraph.mapVertices((vid, v) => {
+          println("进入mapvertices")
+          if (v._2.nowHop) {
+            v._2.nowHop = false //该点作为nowHop更新后标记
+            v._2.reachLabel = hopReach //更新nowHop点的结构
+            v._2.doneHop = true
+          }
+          v
+        })
+        newerGraph.checkpoint()
+        newerGraph.vertices.count()
+        newerGraph = Graph(newerGraph.vertices, graph.edges)
+      }
     }
+
+    newerGraph.vertices.foreach({ v =>
+      println(" 更新后reachelabel "+v._2._2.reachLabel)
+    })
 
     //建立W表
     var tableW : scala.collection.mutable.Map[(String, String), scala.collection.mutable.Set[String]] = scala.collection.mutable.Map[(String, String), scala.collection.mutable.Set[String]]()
@@ -460,18 +451,44 @@ object Compute {
     //id isHop reachlabel string
     val tableWVertex: RDD[(VertexId, Boolean,  mutable.Map[String, scala.collection.mutable.Set[String]], String)] = newerGraph.vertices.map(v2 => Tuple4(v2._1,v2._2._2.isHop , v2._2._2.reachLabel, v2._2._1))
     val updateTableW = tableWVertex.map(v => {
+      var oneVertexTableW: scala.collection.mutable.Map[(String, String), scala.collection.mutable.Set[String]] = scala.collection.mutable.Map[(String, String), scala.collection.mutable.Set[String]]()
       if (v._2) {
         for ((xType, yType) <- tableW.keySet) {
-          //可满足xy类型则加入W表
+          //可满足xy类型则加入oneVertexTableW表
+          println("将该可达点按类型记录到oneVertexHopReach中 ")
           if (v._3.contains(xType).&&(v._3.contains(yType))) {
-            tableW.getOrElse((xType, yType), scala.collection.mutable.Set()) += v._4
+            if (oneVertexTableW.contains((xType, yType))) {
+              oneVertexTableW.getOrElse((xType, yType), scala.collection.mutable.Set()) += v._4
+            }
+            else {
+              val tempSet: mutable.Set[String] = scala.collection.mutable.Set()
+              tempSet += v._4
+              oneVertexTableW += ((xType, yType) -> tempSet)
+            }
           }
+//          //可满足xy类型则加入W表
+//          if (v._3.contains(xType).&&(v._3.contains(yType))) {
+//            tableW.getOrElse((xType, yType), scala.collection.mutable.Set()) += v._4
+//          }
         }
       }
-      v
+      oneVertexTableW
     })
     updateTableW.count()
-
+    val getTableW: mutable.Map[(String, String), mutable.Set[String]] = updateTableW.reduce((map1, map2) => {
+      for (name <- map2.keySet) {
+        if (map1.contains(name)) {
+          map1(name) = map1.getOrElse(name, scala.collection.mutable.Set()) ++ map2.getOrElse(name, scala.collection.mutable.Set())
+        }
+        else {
+          val tempSet: mutable.Set[String] = map2.getOrElse(name, scala.collection.mutable.Set())
+          map1 += (name -> tempSet)
+        }
+      }
+      map1
+    })
+    tableW = getTableW
+    println("tableW "+ tableW)
 
 
     //对hop点生成索引
@@ -514,263 +531,301 @@ object Compute {
       println(v._2._2.reachLabel)
     })
     //  var cou = 3
-    while (true) {
-      println("请输入：1最短路径查询 2可达性查询 3图匹配")
-      //    cou = cou -1
-      val n: Int = StdIn.readInt()
-      n match {
-        case 1 =>
-          println("请输入起点名")
-          val start: String = StdIn.readLine()
-          println("请输入终点名")
-          val end: String = StdIn.readLine()
+    val loopAll = new Breaks
+    // 在 breakable 中循环
+    loopAll.breakable {
+      while (true) {
+        println("请输入：1最短路径查询 2可达性查询 3图匹配")
+        //    cou = cou -1
+        val n: Int = StdIn.readInt()
+        n match {
+          case 1 =>
+            println("请输入起点名")
+            val start: String = StdIn.readLine()
+            println("请输入终点名")
+            val end: String = StdIn.readLine()
 
 
-          //获得当前输入的起点的index和hop集合
-          val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-          val startVertexForm: RDD[(VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long])] = startVertex.map(v => (v._1, v._2._1, v._2._2.hop, v._2._2.index))
-          val startTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
-            if (v1._2 == start)
-              v1
-            else
-              v2
-          })
-          val startSet: mutable.Set[VertexId] = startTuple._3
-          val startIndex: mutable.Map[VertexId, Long] = startTuple._4
+            //获得当前输入的起点的index和hop集合
+            val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
+            val startVertexForm: RDD[(VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long])] = startVertex.map(v => (v._1, v._2._1, v._2._2.hop, v._2._2.index))
+            val startTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
+              if (v1._2 == start)
+                v1
+              else
+                v2
+            })
+            val startSet: mutable.Set[VertexId] = startTuple._3
+            val startIndex: mutable.Map[VertexId, Long] = startTuple._4
 
-          //获得当前输入的终点的index和hop集合
-          val endTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
-            if (v1._2 == end)
-              v1
-            else
-              v2
-          })
-          val endSet: mutable.Set[VertexId] = endTuple._3
-          val endIndex: mutable.Map[VertexId, Long] = endTuple._4
-          val interestSet = startSet.intersect(endSet)
-          var min = Long.MaxValue
-          if (interestSet.nonEmpty) {
-            for (x <- interestSet) {
-              val dis: Long = startIndex.getOrElse[Long](x, 0) + endIndex.getOrElse[Long](x, 0)
-              if (dis < min)
-                min = dis
+            //获得当前输入的终点的index和hop集合
+            val endTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
+              if (v1._2 == end)
+                v1
+              else
+                v2
+            })
+            val endSet: mutable.Set[VertexId] = endTuple._3
+            val endIndex: mutable.Map[VertexId, Long] = endTuple._4
+            val interestSet = startSet.intersect(endSet)
+            var min = Long.MaxValue
+            if (interestSet.nonEmpty) {
+              for (x <- interestSet) {
+                val dis: Long = startIndex.getOrElse[Long](x, 0) + endIndex.getOrElse[Long](x, 0)
+                if (dis < min)
+                  min = dis
+              }
             }
-          }
-          if (min != Long.MaxValue) {
-            println("最短距离为 " + min)
-          } else {
-            println("最短距离不存在")
-          }
-
-        case 2 =>
-          println("请输入起点名")
-          val start: String = StdIn.readLine()
-          println("请输入终点名")
-          val end: String = StdIn.readLine()
-
-
-          //获得当前输入的起点的index和hop集合
-          val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-          val startVertexForm: RDD[(VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long])] = startVertex.map(v => (v._1, v._2._1, v._2._2.hop, v._2._2.index))
-          val startTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
-            if (v1._2 == start)
-              v1
-            else
-              v2
-          })
-          val startSet: mutable.Set[VertexId] = startTuple._3
-
-
-          //获得当前输入的终点的index和hop集合
-          val endTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
-            if (v1._2 == end)
-              v1
-            else
-              v2
-          })
-          val endSet: mutable.Set[VertexId] = endTuple._3
-          val interestSet = startSet.intersect(endSet)
-          if (interestSet.nonEmpty) {
-            println("可达！！ ")
-          }
-          else {
-            println("不可达！！")
-          }
-
-        case 3 =>
-          println("请输入要匹配的图模式，以空格隔开,输入0终止,后一个为新边")
-          var start: String = StdIn.readLine()
-          var startNameType: String = new String()
-          var endNameType: String = new String()
-          // 创建 Breaks 对象
-          val loop = new Breaks
-          while (true) {
-            if (start.contains("\\s")) {
-              val array: Array[String] = start.split("\\s")
-              startNameType = array(0)
-              endNameType = array(1)
-              loop.break()
+            if (min != Long.MaxValue) {
+              println("最短距离为 " + min)
             } else {
-              println("输入不符合规则,重新输入")
-              start = StdIn.readLine()
+              println("最短距离不存在")
             }
-          }
-          var allListToSet:  scala.collection.mutable.Set[ListBuffer[String]] = scala.collection.mutable.Set[ListBuffer[String]]()
-          var allListToBeDown:  scala.collection.mutable.Set[ListBuffer[String]] = scala.collection.mutable.Set[ListBuffer[String]]()//在filter中要被过滤掉的list的集合
-          var nameList : scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
-//          开头存点的类型，各list一一对应，存每个类型的可匹配模式的点
-//          var list1 : scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
-//          var list2 : scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
-//          allListToSet += list1
-//          allListToSet += list2
-//          list1.append(startNameType)
-//          list2.append(endNameType)
-          val hopSatisfyVertex: mutable.Set[String] = tableW.getOrElse((startNameType, endNameType), scala.collection.mutable.Set())
-          if (hopSatisfyVertex.nonEmpty){
-            for (hopVertex <- hopSatisfyVertex){
-              //获得当前输入的点的reachLabel集合
-              val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-              val startVertexForm: RDD[(VertexId, String, mutable.Map[String, scala.collection.mutable.Set[String]])] = startVertex.map(v => (v._1, v._2._1, v._2._2.reachLabel))
-              val startTuple: (VertexId, String, mutable.Map[String, scala.collection.mutable.Set[String]]) = startVertexForm.reduce((v1, v2) => {
-                if (v1._2 == hopVertex)
-                  v1
-                else
-                  v2
-              })
-              val hopReachLabel: mutable.Map[String, scala.collection.mutable.Set[String]] = startTuple._3
-              val startHopVertex: mutable.Set[String] = hopReachLabel.getOrElse(startNameType, scala.collection.mutable.Set())
-              val endHopVertex: mutable.Set[String] = hopReachLabel.getOrElse(endNameType, scala.collection.mutable.Set())
-//              for (shopName <- startHopVertex){
-//                list1.append(shopName)
-//              }
-//              for (ehopName <- endHopVertex){
-//                list2.append(ehopName)
-//              }
 
-              //将符合模式的点对加入,同时nameList更新
-              for (startName1 <- startHopVertex){
-                for (endName1 <- endHopVertex){
-                  var list1 : scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
-                  list1.append(startName1)
-                  list1.append(endName1)
-                  allListToSet += list1
+          case 2 =>
+            println("请输入起点名")
+            val start: String = StdIn.readLine()
+            println("请输入终点名")
+            val end: String = StdIn.readLine()
+
+
+            //获得当前输入的起点的index和hop集合
+            val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
+            val startVertexForm: RDD[(VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long])] = startVertex.map(v => (v._1, v._2._1, v._2._2.hop, v._2._2.index))
+            val startTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
+              if (v1._2 == start)
+                v1
+              else
+                v2
+            })
+            val startSet: mutable.Set[VertexId] = startTuple._3
+
+
+            //获得当前输入的终点的index和hop集合
+            val endTuple: (VertexId, String, mutable.Set[VertexId], mutable.Map[VertexId, Long]) = startVertexForm.reduce((v1, v2) => {
+              if (v1._2 == end)
+                v1
+              else
+                v2
+            })
+            val endSet: mutable.Set[VertexId] = endTuple._3
+            val interestSet = startSet.intersect(endSet)
+            if (interestSet.nonEmpty) {
+              println("可达！！ ")
+            }
+            else {
+              println("不可达！！")
+            }
+
+          case 3 =>
+            //("University", "Department", "FullProfessor", "AssociateProfessor", "AssistantProfessor",
+            //      "Lecturer", "UndergraduateStudent", "GraduateStudent", "TeachingAssistant", "ResearchAssistant",
+            //      "Course", "GraduateCourse", "Publication", "ResearchGroup")
+            println("请输入要匹配的图模式，以空格隔开,输入0终止,后一个为新边")
+            var start: String = StdIn.readLine() //ResearchGroup FullProfessor AssociateProfessor
+          var startNameType: String = new String()
+            var endNameType: String = new String()
+            // 创建 Breaks 对象
+            println("输入：" + start + " " + start.contains(" "))
+            val loop = new Breaks
+            // 在 breakable 中循环
+            loop.breakable {
+              while (true) {
+                if (start.contains(" ")) {
+                  val array: Array[String] = start.split(" ")
+                  startNameType = array(0)
+                  endNameType = array(1)
+                  println("startNameType：" + startNameType)
+                  println("endNameType：" + endNameType)
+                  loop.break()
+                } else {
+                  println("输入不符合规则,重新输入")
+                  start = StdIn.readLine()
                 }
               }
-              nameList.append(startNameType)
-              nameList.append(endNameType)
             }
-          }
-          start = StdIn.readLine()
-          while (start != 0) {
-            var newStartNameType: String = new String()
-            var newEndNameType: String = new String()
-            while (true) {
-              if (start.contains("\\s")) {
-                val array: Array[String] = start.split("\\s")
-                newStartNameType = array(0)
-                newEndNameType = array(1)
-                loop.break()
-              } else {
-                println("输入不符合规则,重新输入")
-                start = StdIn.readLine()
-              }
-            }
-            val tableWHopFind: mutable.Set[String] = tableW.getOrElse((newStartNameType, newEndNameType), scala.collection.mutable.Set())
-//            val deleteLoc : scala.collection.mutable.ListBuffer[Int] = scala.collection.mutable.ListBuffer[Int]()//记录待删除的位置
-            //先执行filter操作，找到输入的nametype中对应之前结果的list，对该list进行过滤
-            for (nowlist <- allListToSet){
-              var loc = 0
-              for (i <- 0 to nameList.size){
-                if (nameList.apply(i) == newStartNameType){
-                  loc = i
-                }
-              }
-              //获得当前list中loc位置的点的hop集合
-              val listVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-              val listVertexForm: RDD[(VertexId, String, mutable.Set[VertexId])] = listVertex.map(v => (v._1, v._2._1, v._2._2.hop))
-              val listTuple: (VertexId, String, mutable.Set[VertexId]) = listVertexForm.reduce((v1, v2) => {
-                if (v1._2 == nowlist.apply(loc))
-                  v1
-                else
-                  v2
-              })
-              val listHop: mutable.Set[VertexId] = listTuple._3
-              var idict : Boolean = false//表示是否可以满足需要的模式
-              for (listHopID <- listHop) {
-                //获得hop点的string，到W表中查询是否满足模式
+            var allListToSet: scala.collection.mutable.Set[ListBuffer[String]] = scala.collection.mutable.Set[ListBuffer[String]]()
+            var allListToBeAdd: scala.collection.mutable.Set[ListBuffer[String]] = scala.collection.mutable.Set[ListBuffer[String]]()
+            var allListToBeDown: scala.collection.mutable.Set[ListBuffer[String]] = scala.collection.mutable.Set[ListBuffer[String]]() //在filter中要被过滤掉的list的集合
+          var nameList: scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
+            //          开头存点的类型，各list一一对应，存每个类型的可匹配模式的点
+            //          var list1 : scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
+            //          var list2 : scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
+            //          allListToSet += list1
+            //          allListToSet += list2
+            //          list1.append(startNameType)
+            //          list2.append(endNameType)
+            //这里start和end在table中不定序所以交换一下再合并
+            var hopSatisfyVertex: mutable.Set[String] = tableW.getOrElse((startNameType, endNameType), scala.collection.mutable.Set())
+            hopSatisfyVertex = hopSatisfyVertex ++ tableW.getOrElse((endNameType, startNameType), scala.collection.mutable.Set())
+            println("查到的hop点：" + hopSatisfyVertex)
+
+            if (hopSatisfyVertex.nonEmpty) {
+              for (hopVertex <- hopSatisfyVertex) {
+                //获得当前输入的点的reachLabel集合
                 val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-                val startVertexForm: RDD[(VertexId, String)] = startVertex.map(v => (v._1, v._2._1))
-                val startTuple: (VertexId, String) = startVertexForm.reduce((v1, v2) => {
-                  if (v1._1 == listHopID)
+                val startVertexForm: RDD[(VertexId, String, mutable.Map[String, scala.collection.mutable.Set[String]])] = startVertex.map(v => (v._1, v._2._1, v._2._2.reachLabel))
+                val startTuple: (VertexId, String, mutable.Map[String, scala.collection.mutable.Set[String]]) = startVertexForm.reduce((v1, v2) => {
+                  if (v1._2 == hopVertex)
                     v1
                   else
                     v2
                 })
-                val listHopString: String = startTuple._2
-                if (tableWHopFind.contains(listHopString)){
-                  idict = true
+                val hopReachLabel: mutable.Map[String, scala.collection.mutable.Set[String]] = startTuple._3
+                val startHopVertex: mutable.Set[String] = hopReachLabel.getOrElse(startNameType, scala.collection.mutable.Set())
+                val endHopVertex: mutable.Set[String] = hopReachLabel.getOrElse(endNameType, scala.collection.mutable.Set())
+                //              for (shopName <- startHopVertex){
+                //                list1.append(shopName)
+                //              }
+                //              for (ehopName <- endHopVertex){
+                //                list2.append(ehopName)
+                //              }
+                println("查到的start点：" + startHopVertex)
+                println("查到的end点：" + endHopVertex)
+                //将符合模式的点对加入,同时nameList更新
+                for (startName1 <- startHopVertex) {
+                  for (endName1 <- endHopVertex) {
+                    var list1: scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
+                    list1.append(startName1)
+                    list1.append(endName1)
+                    allListToSet += list1
+                  }
+                }
+                println("allListToSet " + allListToSet)
+              }
+              nameList.append(startNameType)
+              nameList.append(endNameType)
+            } else {
+              println("不存在子图可以匹配输入的图模式，请重新输入")
+              loopAll.break()
+            }
+            println("输入新的匹配的图模式，以空格隔开,输入0终止,后一个为新边")
+            start = StdIn.readLine()
+            println("输入：" + start + (start != String.valueOf(0)))
+            while (start != String.valueOf(0)) {
+              var newStartNameType: String = new String()
+              var newEndNameType: String = new String()
+              loop.breakable {
+                while (true) {
+                  if (start.contains(" ")) {
+                    val array: Array[String] = start.split(" ")
+                    newStartNameType = array(0)
+                    newEndNameType = array(1)
+                    loop.break()
+                  } else {
+                    println("输入不符合规则,重新输入")
+                    start = StdIn.readLine()
+                  }
                 }
               }
-              if (!idict){
-                allListToBeDown += nowlist
+              var tableWHopFind: mutable.Set[String] = tableW.getOrElse((newStartNameType, newEndNameType), scala.collection.mutable.Set())
+              tableWHopFind = tableWHopFind ++ tableW.getOrElse((newEndNameType, newStartNameType), scala.collection.mutable.Set())
+              //获取要匹配的点在之前匹配过的list中的位置
+              var loc = 0
+              for (i <- 0 to nameList.size - 1) {
+                if (nameList.apply(i) == newStartNameType) {
+                  loc = i
+                }
               }
-//              if (nowlist.apply(0) == newStartNameType){
-//                //先找到list中点可达的hop点，然后判断这些hop点是否满足模式，不满足则filter，这里因为是无向图，所以可达hop点就是之前生成的hop集合
-//                for (i <- 1 to (nowlist.size - 1)) {
-//                  //获得当前list中的点的hop集合
-//                  val listVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-//                  val listVertexForm: RDD[(VertexId, String, mutable.Set[VertexId])] = listVertex.map(v => (v._1, v._2._1, v._2._2.hop))
-//                  val listTuple: (VertexId, String, mutable.Set[VertexId]) = listVertexForm.reduce((v1, v2) => {
-//                    if (v1._2 == nowlist.apply(i))
-//                      v1
-//                    else
-//                      v2
-//                  })
-//                  val listHop: mutable.Set[VertexId] = listTuple._3
-//                  var idict : Boolean = false
-//                  for (listHopID <- listHop) {
-//                    //获得hop点的string，到W表中查询是否满足模式
-//                    val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
-//                    val startVertexForm: RDD[(VertexId, String)] = startVertex.map(v => (v._1, v._2._1))
-//                    val startTuple: (VertexId, String) = startVertexForm.reduce((v1, v2) => {
-//                      if (v1._1 == listHopID)
-//                        v1
-//                      else
-//                        v2
-//                    })
-//                    val listHopString: String = startTuple._2
-//                    if (tableWHopFind.contains(listHopString)){
-//                      idict = true
-//                    }
-//                  }
-//                  if (!idict){
-//                    allListToBeDown += nowlist
-//                  }
-//                }
-//              }
+              println("nameList：" + nameList)
+              //先执行filter操作，找到输入的nametype中对应之前结果的list，对该list进行过滤
+              for (nowlist <- allListToSet) {
+                println("filter操作 nowlist：" + nowlist)
+                //获得当前list中loc位置的点可达的hop集合，即hop属性
+                val listVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
+                val listVertexForm: RDD[(VertexId, String, mutable.Set[VertexId])] = listVertex.map(v => (v._1, v._2._1, v._2._2.hop))
+                val listTuple: (VertexId, String, mutable.Set[VertexId]) = listVertexForm.reduce((v1, v2) => {
+                  if (v1._2 == nowlist.apply(loc)){
+                    v1
+                  }
+                  else
+                    v2
+                })
+                val listHop: mutable.Set[VertexId] = listTuple._3
+                println("filter操作 当前list中loc位置的点可达的hop集合：" + listHop)
+                var idict: Boolean = false //表示是否可以满足需要的模式
+                for (listHopID <- listHop) {
+                  //获得hop点的string，到W表中查询是否满足模式
+                  val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
+                  val startVertexForm: RDD[(VertexId, String)] = startVertex.map(v => (v._1, v._2._1))
+                  val startTuple: (VertexId, String) = startVertexForm.reduce((v1, v2) => {
+                    if (v1._1 == listHopID)
+                      v1
+                    else
+                      v2
+                  })
+                  val listHopString: String = startTuple._2
+                  if (tableWHopFind.contains(listHopString)) {
+                    println("filter操作 当前list满足模式" + nowlist)
+                    idict = true
+                  }
+                }
+                if (!idict) {
+                  allListToBeDown += nowlist
+                }
+              }
+              allListToSet = allListToSet -- allListToBeDown
+              allListToBeDown = scala.collection.mutable.Set[ListBuffer[String]]()
+              println("过滤之后的情况：" + allListToSet)
+              if (allListToSet.isEmpty){
+                println("不存在子图可以匹配输入的图模式，请重新输入")
+                loopAll.break()
+              } else {
+                nameList.append(newEndNameType)
+              }
+
+              //fetch操作
+              for (nowlist <- allListToSet) {
+                //获得当前list中loc位置的点的hop集合
+                val listVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
+                val listVertexForm: RDD[(VertexId, String, mutable.Set[VertexId])] = listVertex.map(v => (v._1, v._2._1, v._2._2.hop))
+                val listTuple: (VertexId, String, mutable.Set[VertexId]) = listVertexForm.reduce((v1, v2) => {
+                  if (v1._2 == nowlist.apply(loc))
+                    v1
+                  else
+                    v2
+                })
+                val listHop: mutable.Set[VertexId] = listTuple._3
+                for (listHopID <- listHop) {
+                  //获得hop点的reachLabel
+                  val startVertex: VertexRDD[(String, attribute)] = newerGraph.vertices
+                  val startVertexForm: RDD[(VertexId, String, mutable.Map[String, scala.collection.mutable.Set[String]])] = startVertex.map(v => (v._1, v._2._1, v._2._2.reachLabel))
+                  val startTuple: (VertexId, String, mutable.Map[String, scala.collection.mutable.Set[String]]) = startVertexForm.reduce((v1, v2) => {
+                    if (v1._1 == listHopID)
+                      v1
+                    else
+                      v2
+                  })
+                  val listHopReachLabel: mutable.Map[String, scala.collection.mutable.Set[String]] = startTuple._3
+                  for (string <- listHopReachLabel.getOrElse(newEndNameType, scala.collection.mutable.Set())) {
+                    var addList = scala.collection.mutable.ListBuffer[String]()
+                    for (i <- 0 to nowlist.size - 1) {
+                      addList.append(nowlist.apply(i))
+                    }
+                    addList.append(string)
+                    allListToBeAdd += addList
+                  }
+                }
+                allListToBeDown += nowlist
+                println("allListToBeDown" + allListToBeDown)
+              }
+              allListToSet = allListToSet ++ allListToBeAdd
+              allListToSet = allListToSet -- allListToBeDown
+              allListToBeDown = scala.collection.mutable.Set[ListBuffer[String]]()
+              allListToBeAdd = scala.collection.mutable.Set[ListBuffer[String]]()
+              println("输入新的匹配的图模式，以空格隔开,输入0终止,后一个为新边")
+              start = StdIn.readLine()
             }
-            allListToSet = allListToSet -- allListToBeDown
-            allListToBeDown = scala.collection.mutable.Set[ListBuffer[String]]()
 
-            //fetch操作
-            var listNewInput : scala.collection.mutable.ListBuffer[String] = scala.collection.mutable.ListBuffer[String]()
-            allListToSet += listNewInput
-            listNewInput.append(newEndNameType)
-          }
 
+            if (allListToSet.nonEmpty) {
+              allListToSet.foreach(println)
+            } else {
+              println("不存在匹配的子图")
+            }
+        }
 
       }
-
-          while (start != 0){
-            var startNameType: String = new String()
-            var endNameType: String = new String()
-
-//            if (v3._3.contains("\\d")) {
-//              val array: Array[String] = v3._3.split("@")
-//          }
-          }
-
-
     }
   }
 }
