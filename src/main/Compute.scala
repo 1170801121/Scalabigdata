@@ -19,25 +19,26 @@ object Compute {
     //  readOWL
     val r = conf.textFile(filename).map(_.split("\\s"))
     val vunion = r.map(_ (0)).union(r.map(_ (2))).distinct.zipWithIndex
-//    var graph: Graph[String, String] = Graph(vunion.map(_.swap), r.map(x => (x(0), (x(1), x(2))))
-//      .join(vunion).map(x => (x._2._1._2, (x._2._2, x._2._1._1)))
-//      .join(vunion).map(x => new Edge(x._2._1._1, x._2._2, x._2._1._2)))
+    var graph: Graph[String, String] = Graph(vunion.map(_.swap), r.map(x => (x(0), (x(1), x(2))))
+      .join(vunion).map(x => (x._2._1._2, (x._2._2, x._2._1._1)))
+      .join(vunion).map(x => new Edge(x._2._1._1, x._2._2, x._2._1._2)))
 
-//    graph.edges.foreach(v => {
-//      println(v)
-//    })
-        val rdd1: RDD[(VertexId, String)] = conf.makeRDD(Seq(
-          (3L, "<http://www.Department0.University0.edu/ResearchGroup0>"), (7L, "<http://www.Department0.University0.edu/AssociateProfessor0>"),
-          (5L, "<http://www.Department0.University0.edu/FullProfessor7>"), (2L, "<http://www.Department0.University0.edu/AssociateProfessor2")
-        ))
-        val rdd2: RDD[Edge[String]] = conf.makeRDD(Seq(
-          Edge(3L, 5L, "0"),
-          Edge(3L, 7L, "0"),
-          Edge(3L, 2L, "0"),
-          Edge(7L, 2L, "0"),
-        ))
-    var graph: Graph[String, String] = Graph(rdd1, rdd2)
-
+    graph.edges.foreach(v => {
+      println(v)
+    })
+    //测试小图
+//        val rdd1: RDD[(VertexId, String)] = conf.makeRDD(Seq(
+//          (3L, "<http://www.Department0.University0.edu/ResearchGroup0>"), (7L, "<http://www.Department0.University0.edu/AssociateProfessor0>"),
+//          (5L, "<http://www.Department0.University0.edu/FullProfessor7>"), (2L, "<http://www.Department0.University0.edu/AssociateProfessor2")
+//        ))
+//        val rdd2: RDD[Edge[String]] = conf.makeRDD(Seq(
+//          Edge(3L, 5L, "0"),
+//          Edge(3L, 7L, "0"),
+//          Edge(3L, 2L, "0"),
+//          Edge(7L, 2L, "0"),
+//        ))
+//    var graph: Graph[String, String] = Graph(rdd1, rdd2)
+    val time1=System.currentTimeMillis()
     val ver: VertexRDD[String] = graph.vertices
 
     var bfsVer: RDD[(VertexId, (String, attribute))] = ver.map(x => Tuple2(x._1, Tuple2(x._2, new attribute(x._1))))
@@ -489,7 +490,7 @@ object Compute {
     })
     tableW = getTableW
     println("tableW "+ tableW)
-
+    val time2 =System.currentTimeMillis()
 
     //对hop点生成索引
 //    newGraph.mapVertices((vid, v1) => {
@@ -530,6 +531,8 @@ object Compute {
       println(v._2._2.hop.size)
       println(v._2._2.reachLabel)
     })
+    
+    println("共用时 "+ time2 - time1)
     //  var cou = 3
     val loopAll = new Breaks
     // 在 breakable 中循环
